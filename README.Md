@@ -13,7 +13,7 @@ This project is designed to accelerate the generation of machine learning traini
 ## Project Structure
 ```text
 ├── include/                 # Header files (Third-party and custom)
-│   ├── kernels.h            # Custom function prototypes (The Menu / Contract)
+│   ├── kernels.h            # Custom function prototypes
 │   ├── stb_image.h          # Decodes JPEGs/PNGs into raw pixel arrays
 │   └── stb_image_write.h    # Encodes raw pixel arrays back to disk
 ├── src/                     # Source files
