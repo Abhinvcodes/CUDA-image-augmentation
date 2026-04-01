@@ -1,0 +1,43 @@
+# ----------------------------------------------------------------------
+# Build directories and CMake generated files (CRITICAL)
+# ----------------------------------------------------------------------
+build/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+compile_commands.json
+
+# ----------------------------------------------------------------------
+# Compiled Object files and Binaries
+# ----------------------------------------------------------------------
+*.o
+*.obj
+*.out
+*.exe
+augment
+
+# ----------------------------------------------------------------------
+# Data and Output Images
+# ----------------------------------------------------------------------
+# Ignore generated outputs so you don't commit hundreds of test images
+*output*.png
+*output*.jpg
+
+# Uncomment these if you want to ignore ALL images in the repo 
+# (useful when you start bringing in massive ML datasets)
+# *.jpg
+# *.jpeg
+# *.png
+
+# ----------------------------------------------------------------------
+# Editor / IDE Specific (VS Code)
+# ----------------------------------------------------------------------
+.vscode/
+*.swp
+
+# ----------------------------------------------------------------------
+# OS Generated Files
+# ----------------------------------------------------------------------
+.DS_Store
+Thumbs.db
