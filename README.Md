@@ -12,11 +12,13 @@ This project is designed to accelerate the generation of machine learning traini
 
 ## Project Structure
 ```text
-├── include/                 # Third-party single-header libraries
+├── include/                 # Header files (Third-party and custom)
+│   ├── kernels.h            # Custom function prototypes (The Menu / Contract)
 │   ├── stb_image.h          # Decodes JPEGs/PNGs into raw pixel arrays
 │   └── stb_image_write.h    # Encodes raw pixel arrays back to disk
-├── src/
-│   └── main.cu              # Core host/device code and kernel implementations
+├── src/                     # Source files
+│   ├── kernels.cu           # Device code: GPU math kernels and C wrappers
+│   └── main.cu              # Host code: File I/O, memory management, orchestration
 ├── .gitignore               # Ignores build artifacts and generated outputs
 ├── CMakeLists.txt           # Build system configuration
 └── README.md                # Project documentation
