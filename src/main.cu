@@ -19,58 +19,76 @@ void swapPointers(unsigned char **a, unsigned char **b)
 int main()
 {
     int width, height, channels;
+
+    // Ensure you are targeting your PNG file!
     const char *input_filename = "../input.png";
 
     unsigned char *h_input = stbi_load(input_filename, &width, &height, &channels, 0);
-    size_t img_size = width * height * channels * sizeof(unsigned char);
+
+    // Safety check: Ensure the image actually loaded
+    if (h_input == NULL)
+    {
+        printf("CRITICAL ERROR: Could not load image from %s\n", input_filename);
+        printf("Reason: %s\n", stbi_failure_reason());
+        return -1;
+    }
 
     // Open manifest file in append mode
     FILE *manifest = fopen("../data/manifest.csv", "a");
     if (manifest == NULL)
     {
-        printf("Error: Could not open manifest.csv\n");
+        printf("Error: Could not open manifest.csv. Did you create the data/ folder?\n");
         return -1;
     }
 
-    // Allocate Ping-Pong GPU Buffers
-    unsigned char *d_buffer_A, *d_buffer_B;
-    cudaMalloc((void **)&d_buffer_A, img_size);
-    cudaMalloc((void **)&d_buffer_B, img_size);
+    // --- 1. DYNAMIC MEMORY BOUNDS ---
+    // Instead of using the 220x220 size, we allocate for the absolute maximum
+    // size this pipeline could produce so the GPU doesn't crash on expansion.
+    int max_w = 500;
+    int max_h = 500;
+    size_t max_img_size = max_w * max_h * channels * sizeof(unsigned char);
 
-    unsigned char *h_output = (unsigned char *)malloc(img_size);
+    // Allocate Ping-Pong GPU Buffers to hold up to 500x500
+    unsigned char *d_buffer_A, *d_buffer_B;
+    cudaMalloc((void **)&d_buffer_A, max_img_size);
+    cudaMalloc((void **)&d_buffer_B, max_img_size);
+
+    // Host output buffer also needs max capacity
+    unsigned char *h_output = (unsigned char *)malloc(max_img_size);
 
     printf("Starting Power Set Augmentation (32 Combinations)...\n");
 
-    // Loop from 0 to 31 (00000 to 11111 in binary)
-    for (int i = 0; i < 16; ++i)
+    // --- 2. THE PIPELINE LOOP (0 to 31) ---
+    for (int i = 0; i < 32; ++i)
     {
 
-        // 1. Reset Buffer A to the original image for each new combination
-        cudaMemcpy(d_buffer_A, h_input, img_size, cudaMemcpyHostToDevice);
+        // At the start of every combination, explicitly reset to the original dimensions
+        int current_w = width;
+        int current_h = height;
 
-        // Pointers to keep track of active source and destination
+        // Only copy the bytes needed for the original 220x220 image into the start of Buffer A
+        size_t original_size = current_w * current_h * channels * sizeof(unsigned char);
+        cudaMemcpy(d_buffer_A, h_input, original_size, cudaMemcpyHostToDevice);
+
+        // Reset the active pointers
         unsigned char *d_src = d_buffer_A;
         unsigned char *d_dst = d_buffer_B;
 
-        // String to build our filename and manifest log
         char applied_augs[256] = "";
         char filename[256] = "";
-
-        // 2. The Bitmask Checks
-        // We use bitwise AND (&) to check if a specific bit is a 1 or 0
 
         // Bit 0: Blur
         if ((i & (1 << 0)) != 0)
         {
-            runBlurKernel(d_src, d_dst, width, height, channels);
+            runBlurKernel(d_src, d_dst, current_w, current_h, channels);
             strcat(applied_augs, "blur_");
-            swapPointers(&d_src, &d_dst); // Output is now the input for the next step
+            swapPointers(&d_src, &d_dst);
         }
 
         // Bit 1: Rotate
         if ((i & (1 << 1)) != 0)
         {
-            runRotateKernel(d_src, d_dst, width, height, channels);
+            runRotateKernel(d_src, d_dst, current_w, current_h, channels);
             strcat(applied_augs, "rot_");
             swapPointers(&d_src, &d_dst);
         }
@@ -78,63 +96,70 @@ int main()
         // Bit 2: Sharpen
         if ((i & (1 << 2)) != 0)
         {
-            runSharpenKernel(d_src, d_dst, width, height, channels);
+            runSharpenKernel(d_src, d_dst, current_w, current_h, channels);
             strcat(applied_augs, "sharp_");
             swapPointers(&d_src, &d_dst);
         }
 
-        // Bit 3: Scale
+        // Bit 3: Scale (Zooming in 1.5x, but keeping canvas size the same)
         if ((i & (1 << 3)) != 0)
         {
-            runScaleKernel(d_src, d_dst, width, height, channels);
+            runScaleKernel(d_src, d_dst, current_w, current_h, channels);
             strcat(applied_augs, "scale_");
             swapPointers(&d_src, &d_dst);
         }
 
-        // Bit 4: Resize
-        /*
+        // Bit 4: RESIZE (Expanding the canvas to 500x500)
+        // Since we evaluate top-to-bottom, this happens last. This is highly optimized!
+        // We only do math on 48,400 pixels for blur/rotate, and stretch it at the very end.
         if ((i & (1 << 4)) != 0)
         {
-            runResizeKernel(d_src, d_dst, width, height, channels);
+            runResizeKernel(d_src, d_dst, current_w, current_h, max_w, max_h, channels);
+
+            // --- CRITICAL STEP ---
+            // Update the state trackers so the saving logic knows the image just got bigger!
+            current_w = max_w;
+            current_h = max_h;
+
             strcat(applied_augs, "resz_");
             swapPointers(&d_src, &d_dst);
-        }*/
+        }
 
-        // Ensure the GPU has finished all kernels for this combination
+        // Ensure all kernels for this combination are finished before saving
         cudaDeviceSynchronize();
 
-        // 3. Save the Result
-        // If no augs were applied, name it 'original'
+        // --- 3. SAVING THE RESULT ---
+        // Clean up the string name
         if (i == 0)
         {
             strcpy(applied_augs, "original");
         }
-
-        // Ensure no trailing underscore
-        if (strlen(applied_augs) > 0 && applied_augs[strlen(applied_augs) - 1] == '_')
+        else if (strlen(applied_augs) > 0 && applied_augs[strlen(applied_augs) - 1] == '_')
         {
             applied_augs[strlen(applied_augs) - 1] = '\0';
         }
 
-        // Change the path to the new data/augmented/ directory
         snprintf(filename, sizeof(filename), "../data/augmented/output_%02d_%s.png", i, applied_augs);
 
-        // Copy the FINAL d_src back to the CPU
-        cudaMemcpy(h_output, d_src, img_size, cudaMemcpyDeviceToHost);
-        stbi_write_png(filename, width, height, channels, h_output, width * channels);
+        // Recalculate the exact byte size we need to copy back (it might be 220x220, or 500x500!)
+        size_t final_size = current_w * current_h * channels * sizeof(unsigned char);
+        cudaMemcpy(h_output, d_src, final_size, cudaMemcpyDeviceToHost);
 
-        // 4. Log to CSV
+        // Write the PNG using the dynamic dimensions
+        stbi_write_png(filename, current_w, current_h, channels, h_output, current_w * channels);
+
+        // Log it to our dataset map
         fprintf(manifest, "%s, %s\n", filename, applied_augs);
-        printf("Generated: %s\n", filename);
+        printf("Generated: %s (Dimensions: %dx%d)\n", filename, current_w, current_h);
     }
 
-    // Cleanup
+    // --- 4. CLEANUP ---
     fclose(manifest);
     cudaFree(d_buffer_A);
     cudaFree(d_buffer_B);
     stbi_image_free(h_input);
     free(h_output);
 
-    printf("Done!\n");
+    printf("\nPipeline Complete! 32 images generated.\n");
     return 0;
 }

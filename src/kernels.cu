@@ -248,3 +248,46 @@ void runScaleKernel(unsigned char *d_input, unsigned char *d_output, int width, 
 
     CHECK_KERNEL("Scale");
 }
+
+__global__ void resizeKernel(unsigned char *input, unsigned char *output, int in_w, int in_h, int out_w, int out_h, int channels)
+{
+    // 1. Thread coordinates map to the NEW (Destination) image
+    int out_x = blockIdx.x * blockDim.x + threadIdx.x;
+    int out_y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    // Boundary check against the TARGET dimensions
+    if (out_x < out_w && out_y < out_h)
+    {
+
+        // 2. Calculate the mapping ratios
+        float x_ratio = (float)in_w / out_w;
+        float y_ratio = (float)in_h / out_h;
+
+        // 3. Find the nearest source pixel (Casting to int automatically floors the value)
+        int in_x = (int)(out_x * x_ratio);
+        int in_y = (int)(out_y * y_ratio);
+
+        // 4. Memory index calculations
+        int out_idx = (out_y * out_w + out_x) * channels;
+        int in_idx = (in_y * in_w + in_x) * channels;
+
+        // 5. Copy the color channels
+        for (int c = 0; c < channels; ++c)
+        {
+            output[out_idx + c] = input[in_idx + c];
+        }
+    }
+}
+
+// The Wrapper
+void runResizeKernel(unsigned char *d_input, unsigned char *d_output, int in_w, int in_h, int out_w, int out_h, int channels)
+{
+    dim3 block(16, 16);
+    // CRITICAL: The grid size must be calculated using the OUTPUT dimensions
+    dim3 grid((out_w + block.x - 1) / block.x, (out_h + block.y - 1) / block.y);
+
+    printf("Resizing from %dx%d to %dx%d...\n", in_w, in_h, out_w, out_h);
+    resizeKernel<<<grid, block>>>(d_input, d_output, in_w, in_h, out_w, out_h, channels);
+
+    CHECK_KERNEL("Resize");
+}
