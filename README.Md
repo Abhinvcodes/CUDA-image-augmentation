@@ -12,6 +12,9 @@ This project is designed to accelerate the generation of machine learning traini
 
 ## Project Structure
 ```text
+├── data
+│   ├──manifest.csv          # A file created for ML models to read data
+│   └──augmented             # Directory where the augmented photos reside
 ├── include/                 # Header files (Third-party and custom)
 │   ├── kernels.h            # Custom function prototypes
 │   ├── stb_image.h          # Decodes JPEGs/PNGs into raw pixel arrays
