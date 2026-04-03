@@ -35,7 +35,8 @@ This project is designed to accelerate the generation of machine learning traini
 
 ## Build and Execution Instructions
 1. Prepare the input
-Place a test image named input.jpg directly into the root directory of this project (alongside the CMakeLists.txt file).
+
+Place a test image named input.png directly into the root directory of this project (alongside the CMakeLists.txt file).
 
 2. Compile the Project
 ```text
